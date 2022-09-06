@@ -7,12 +7,41 @@ from datetime import *
 import time
 import glob
 import sys
-
+import argparse
 
 baseprog = os.getcwd()
 logfile = baseprog + "/logcrech2.log"
 if os.path.exists(logfile):
 	os.remove(logfile)
+
+# -----------------------
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('--input', required=True, help='input folder path to predict')
+parser.add_argument('--classifier', required=True)
+parser.add_argument('--subcases', default=None, help='Subcases wanted')
+parser.add_argument('--adapter', default='tf', help='adapter ovtf | tf ')
+
+args = parser.parse_args()
+repima = args.input
+snumcla = args.classifier
+souscasvoulu = args.subcases
+adapter = args.adapter
+
+
+if adapter == 'ovtf':
+	os.environ["OPENVINO_TF_CONVERT_VARIABLES_TO_CONSTANTS"] = "1"
+	os.environ["TF_ENABLE_ONEDNN_OPTS"] = "1"  # This needs to be set before importing TF
+
+	os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+	import tensorflow as tf
+	import openvino_tensorflow as ovtf
+
+	ovtf.set_backend("GPU")
+
+
+
 
 # -----------------------
 def ecrirelog(texte):
@@ -24,25 +53,27 @@ def ecrirelog(texte):
 # -----------------------
 	
 # lire les parametres en entree
-nbpe = len(sys.argv)
-if nbpe <2:
-	ecrirelog("parametres repertoire et numero classifier manquants")
-	os._exit(0)
-if nbpe == 2:
-	ecrirelog("deux parametres necessaires : repertoire et numero classifier")
-	os._exit(0)
+# nbpe = len(sys.argv)
+# if nbpe <2:
+# 	ecrirelog("parametres repertoire et numero classifier manquants")
+# 	os._exit(0)
+# if nbpe == 2:
+# 	ecrirelog("deux parametres necessaires : repertoire et numero classifier")
+# 	os._exit(0)
+
+
 nompar = "classifiers.csv"
 nparnecessaire = 9
 sepa = "--"
 sc=";"
 mincol = 10
 
-repima = sys.argv[1]
-snumcla = sys.argv[2]
+# repima = sys.argv[1]
+# snumcla = sys.argv[2]
 souscasvoulu = ""
-if nbpe == 4:
-	souscasvoulu = sys.argv[3]
-	#ecrirelog("souscasvoulu="+souscasvoulu)
+#if nbpe == 4:
+#	souscasvoulu = sys.argv[3]
+#	#ecrirelog("souscasvoulu="+souscasvoulu)
 #time.sleep(0.5)
 
 if not os.path.exists(nompar):
@@ -50,6 +81,8 @@ if not os.path.exists(nompar):
 	os._exit(0)
 
 listima = []
+
+
 if os.path.isdir(repima):
 	os.chdir(repima)
 	listima = sorted(glob.glob("*.jpg"))
@@ -69,6 +102,7 @@ affitest = affitest.replace(":","")
 trouvecla = False
 with open(nompar,"r") as flp:
 	tlpar = flp.read().splitlines()
+
 	nl = 0
 	for ligne in tlpar:
 		nl = nl + 1
@@ -167,7 +201,10 @@ def predict(filename,classeattendue,fichier,numcri,logpred):
 	x = image.img_to_array(img) #convert it to array
 	x = np.expand_dims(x, axis=0) #simulate batch dimension
 	x = preprocess_input(x) #preprocessing
+	ctime_before_pred = time.time()
 	pred = model.predict(x) #classes prediction
+	ctime_after_pred = time.time()
+	# print("TEMPS ECOULE : {}".format(ctime_after_pred - ctime_before_pred))
 	class_pred = labels[np.argmax(pred)] #find class with highest confidence
 	if not classe_attendue=="":
 		if class_pred == classeattendue:
@@ -371,7 +408,7 @@ for j in range(0,finboucle):
 	ecrirelog("recuperation du fichier weights")
 	model = model0
 	model.load_weights(weightpath)
-	#ecrirelog("fin de recuperation")
+	ecrirelog("fin de recuperation")
 		
 	## Prediction
 	from tensorflow.keras.preprocessing import image
@@ -386,16 +423,17 @@ for j in range(0,finboucle):
 	for f in listetest:
 		tabj = f.split(sepa)
 		ltabj = len(tabj)
-		if ltabj==6 or ltabj ==7 or ltabj ==8:
-			if ltabj ==7 or ltabj == 8:
+		if ltabj==6 or ltabj == 7 or ltabj == 8:
+			if ltabj == 7 or ltabj == 8:
 				classe_attendue = tabj[0]
 				if not classe_attendue in labels:
 					ecrirelog(classe_attendue+" pas dans labels")
 					continue
 			else:
 				classe_attendue = ""
-			numcri=tabj[ltabj-5].replace(".jpg","")
-			bon,confiance = predict(repima+"/"+f,classe_attendue,tabj[ltabj-6],numcri,logpred)
+
+			numcri=tabj[ltabj-5].replace(".jpg", "")
+			bon, confiance = predict(repima+"/"+f, classe_attendue, tabj[ltabj-6], numcri, logpred)
 			nbpreds = nbpreds + 1
 			if not classe_attendue == "":
 				nbtestsbons = nbtestsbons + bon
@@ -413,6 +451,8 @@ for j in range(0,finboucle):
 		else:
 			os._exit(0)
 	finpred = (int)(time.time()*1000)
+
+
 	#tempsmoyenpred = round((finpred-debpred) / nbpreds,1)
 
 	#predictionmoyenne = round(100 * (bilanpred / nbpreds),1)
@@ -459,15 +499,16 @@ if os.path.exists(logbilan):
 	os.remove(logbilan)
 	
 lentetepredf = "classe attendue"+sc+"fichier jpg"+sc+"fichier wav"+sc+"numcri"
-for k in range(1,4):
+for k in range(1, 4):
 	lentetepredf = lentetepredf + sc + "Pred. " + str(k) + sc + "Conf. " + str(k) + sc + "ok" + str(k)
 with open(logpredfinal, 'a+') as flf:
 	flf.write(lentetepredf+"\n")
+
 	
 lentetebil = "Espece"+ sc + "Pred1" + sc + "Pred2" + sc + "Pred3" + sc + "Total"
 
 tabokesp = []
-for k in range(0,4):
+for k in range(0, 4):
 	tabokesp.append({})
 	
 # --------------------------------
@@ -538,7 +579,7 @@ for i in range(0,len(tabpred1)):
 					continue
 				if cf > 0:
 					for l in range(0,cf):
-						if classespred[l] ==clpred:
+						if classespred[l] == clpred:
 							onpeutprendre = False 
 							break
 				
@@ -572,12 +613,12 @@ for i in range(0,len(tabpred1)):
 		#else:
 		#ecrirelog("on n'a pas ! pour ligne = "+ligne+"    cf="+str(cf))
 		#ecrirelog("- cf="+str(cf))
-				
+
 	if aumoins1 == True:
 		with open(logpredfinal, 'a+') as flf:
 			flf.write(lignefinale+"\n")
 			ecrirelog("phase2) ecriture ligne finale : "+lignefinale)
-			
+
 				
 # --------------------------------
 # Phase 2 b : calcul des bilans par espèces
